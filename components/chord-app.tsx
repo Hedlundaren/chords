@@ -1,5 +1,22 @@
 "use client";
 
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useRef, useState } from "react";
 import { Piano } from "@/components/piano";
 import {
@@ -64,6 +81,10 @@ export function ChordApp() {
   const timers = useRef<number[]>([]);
   const dashTimers = useRef<number[]>([]);
   const colorsScroller = useRef<HTMLDivElement>(null);
+  const dashSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const quality = QUALITIES.find((item) => item.id === qualityId) ?? null;
   const familyMeta = FAMILIES.find((item) => item.id === quality?.family);
@@ -176,6 +197,18 @@ export function ChordApp() {
     stopDash();
     setDash((items) => items.filter((entry) => entry.id !== activeDashId));
     setActiveDashId(null);
+  }
+
+  function reorderDash(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    stopDash();
+    setDash((items) => {
+      const from = items.findIndex((item) => item.id === active.id);
+      const to = items.findIndex((item) => item.id === over.id);
+      if (from < 0 || to < 0) return items;
+      return arrayMove(items, from, to);
+    });
   }
 
   function colorRow(color: Quality, key: string) {
@@ -377,35 +410,24 @@ export function ChordApp() {
           >
             Add
           </button>
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {dash.length === 0 ? (
-              <p className="truncate px-1 text-[12px] text-muted">No chords yet</p>
-            ) : (
-              dash.map((item) => {
-                const itemQuality = QUALITIES.find((entry) => entry.id === item.qualityId);
-                if (!itemQuality) return null;
-                const symbol = chordSymbol(item.root, itemQuality);
-                const active = item.id === activeDashId;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-pressed={active}
-                    aria-label={`Play ${symbol}`}
-                    onClick={() => playSaved(item)}
-                    className="h-8 shrink-0 rounded-full px-2.5 font-serif text-[15px] leading-none"
-                    style={{
-                      background: active ? "#1b1916" : "#fffcf7",
-                      color: active ? "#f4f1ea" : "#1b1916",
-                      boxShadow: active ? "none" : "inset 0 0 0 1px #d8d1c4",
-                    }}
-                  >
-                    {symbol}
-                  </button>
-                );
-              })
-            )}
-          </div>
+          <DndContext sensors={dashSensors} collisionDetection={closestCenter} onDragEnd={reorderDash}>
+            <SortableContext items={dash.map((item) => item.id)} strategy={horizontalListSortingStrategy}>
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                {dash.length === 0 ? (
+                  <p className="truncate px-1 text-[12px] text-muted">No chords yet</p>
+                ) : (
+                  dash.map((item) => (
+                    <DashChordButton
+                      key={item.id}
+                      item={item}
+                      active={item.id === activeDashId}
+                      onPlay={() => playSaved(item)}
+                    />
+                  ))
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
           <button
             type="button"
             onClick={removeActive}
@@ -428,6 +450,43 @@ export function ChordApp() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function DashChordButton({
+  item,
+  active,
+  onPlay,
+}: {
+  item: DashChord;
+  active: boolean;
+  onPlay: () => void;
+}) {
+  const quality = QUALITIES.find((entry) => entry.id === item.qualityId);
+  const symbol = quality ? chordSymbol(item.root, quality) : item.root;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      aria-label={`Play ${symbol}`}
+      className="h-8 shrink-0 cursor-grab rounded-full px-2.5 font-serif text-[15px] leading-none touch-none active:cursor-grabbing"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        background: active ? "#1b1916" : "#fffcf7",
+        color: active ? "#f4f1ea" : "#1b1916",
+        boxShadow: isDragging ? "0 6px 16px rgba(27, 25, 22, 0.18)" : active ? "none" : "inset 0 0 0 1px #d8d1c4",
+        zIndex: isDragging ? 2 : undefined,
+      }}
+      {...attributes}
+      {...listeners}
+      aria-pressed={active}
+      onClick={onPlay}
+    >
+      {symbol}
+    </button>
   );
 }
 
