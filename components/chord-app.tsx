@@ -179,7 +179,7 @@ export function ChordApp() {
           </h2>
           <div ref={colorsScroller} className="pane min-h-0 flex-1 overflow-y-auto">
             <div id="colors-common">
-              <div className="sticky top-0 z-10 flex h-7 items-center gap-2 border-b border-line bg-paper/95 px-2.5 backdrop-blur-sm">
+              <div className="sticky top-0 z-10 flex h-7 items-center gap-2 border-b border-line bg-paper/95 px-2.5 backdrop-blur-sm md:h-8 md:px-5">
                 <span className="h-2 w-2 rounded-full bg-ink" />
                 <span className="text-[11px] font-semibold tracking-[0.14em] text-ink uppercase">Common</span>
                 <span className="truncate text-[12px] text-muted">Reach for these first.</span>
