@@ -119,19 +119,17 @@ export function ChordApp() {
         aria-pressed={selected}
         aria-label={`Play ${symbol}, ${color.label}`}
         onClick={() => sound(color, root, octave, 0)}
-        className="flex h-10 w-full items-center gap-2.5 border-b border-line px-2.5 text-left"
+        className="flex h-10 w-full items-center gap-2.5 border-b border-line px-2.5 text-left md:grid md:h-12 md:grid-cols-[9rem_minmax(8rem,1fr)_11rem] md:items-center md:gap-x-8 md:px-5"
         style={{
           background: selected ? "#1b1916" : "transparent",
           color: selected ? "#f4f1ea" : "#1b1916",
         }}
       >
-        <span className="flex shrink-0 items-baseline gap-1.5">
-          <span className="font-serif text-[17px] leading-none">{symbol}</span>
-          <span className={`hidden text-[11px] leading-none sm:inline ${selected ? "text-[#f4f1ea]/65" : "text-muted"}`}>
-            {notes.map((pc) => pretty(pc)).join(" ")}
-          </span>
+        <span className="shrink-0 font-serif text-[17px] leading-none md:text-lg">{symbol}</span>
+        <span className={`hidden text-[11px] leading-none sm:inline md:text-[13px] ${selected ? "text-[#f4f1ea]/65" : "text-muted"}`}>
+          {notes.map((pc) => pretty(pc)).join(" ")}
         </span>
-        <span className={`min-w-0 flex-1 truncate text-[13px] ${selected ? "text-[#f4f1ea]/70" : "text-muted"}`}>
+        <span className={`min-w-0 flex-1 truncate text-[13px] md:text-sm ${selected ? "text-[#f4f1ea]/70" : "text-muted"}`}>
           {color.label}
         </span>
       </button>
@@ -175,7 +173,7 @@ export function ChordApp() {
         </section>
 
         <section className="flex min-h-0 flex-col overflow-hidden" aria-label="Chord colors">
-          <h2 className="flex h-8 shrink-0 items-center justify-between border-b border-line px-2.5 text-[11px] font-semibold tracking-[0.16em] text-muted uppercase">
+          <h2 className="flex h-8 shrink-0 items-center justify-between border-b border-line px-2.5 text-[11px] font-semibold tracking-[0.16em] text-muted uppercase md:h-10 md:px-5">
             <span>Colors</span>
             <span className="font-serif text-base tracking-normal text-ink normal-case">{ROOTS.find((item) => item.id === root)?.label}</span>
           </h2>
@@ -192,7 +190,7 @@ export function ChordApp() {
               const colors = QUALITIES.filter((item) => item.family === family.id && !GROUND.has(item.id));
               return (
                 <div key={family.id} id={`colors-${family.id}`}>
-                  <div className="sticky top-0 z-10 flex h-7 items-center gap-2 border-b border-line bg-paper/95 px-2.5 backdrop-blur-sm">
+                  <div className="sticky top-0 z-10 flex h-7 items-center gap-2 border-b border-line bg-paper/95 px-2.5 backdrop-blur-sm md:h-8 md:px-5">
                     <span className="h-2 w-2 rounded-full" style={{ background: family.accent }} />
                     <span className="text-[11px] font-semibold tracking-[0.14em] uppercase" style={{ color: family.accent }}>
                       {family.name}
