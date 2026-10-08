@@ -177,3 +177,52 @@ export function keyboardBounds(midis: number[]): { low: number; high: number } {
   if (high < top) high = top - (top % 12) + 11;
   return { low, high };
 }
+
+export type ChordPick = { root: RootId; qualityId: string };
+
+const ROOT_IDS = ROOTS.map((item) => item.id);
+
+export function transposeRoot(root: RootId, semitones: number): RootId {
+  const index = ROOT_IDS.indexOf(root);
+  const next = (((index + semitones) % 12) + 12) % 12;
+  return ROOT_IDS[next];
+}
+
+function pick(root: RootId, semitones: number, qualityId: string): ChordPick {
+  return { root: transposeRoot(root, semitones), qualityId };
+}
+
+/**
+ * Chords that usually follow this one, from common-practice functional harmony.
+ * Major and minor chords are treated as I or i. Dominants resolve down a fifth.
+ */
+export function suggestNext(root: RootId, qualityId: string | null): ChordPick[] {
+  const quality = qualityId ? QUALITIES.find((item) => item.id === qualityId) : undefined;
+  const family = quality?.family ?? "bright";
+  let moves: ChordPick[];
+
+  if (quality?.id === "m7b5") {
+    moves = [pick(root, -2, "minor"), pick(root, 5, "7"), pick(root, 6, "major"), pick(root, 3, "minor")];
+  } else if (family === "tense") {
+    moves = [pick(root, 1, "major"), pick(root, 1, "minor"), pick(root, 6, "major"), pick(root, 10, "minor")];
+  } else if (family === "warm" || family === "spicy") {
+    moves = [pick(root, 5, "major"), pick(root, 2, "minor"), pick(root, 10, "major"), pick(root, 5, "minor")];
+  } else if (family === "dark") {
+    moves = [pick(root, 8, "major"), pick(root, 5, "minor"), pick(root, 3, "major"), pick(root, 7, "major")];
+  } else if (family === "open") {
+    moves = [pick(root, 0, "major"), pick(root, 0, "minor"), pick(root, 7, "major"), pick(root, 5, "major")];
+  } else if (family === "lifted") {
+    moves = [pick(root, 5, "major"), pick(root, 0, "major"), pick(root, 9, "minor"), pick(root, 7, "major")];
+  } else {
+    moves = [pick(root, 7, "major"), pick(root, 5, "major"), pick(root, 9, "minor"), pick(root, 2, "minor")];
+  }
+
+  const current = qualityId ?? "major";
+  const seen = new Set<string>();
+  return moves.filter((item) => {
+    const key = `${item.root}:${item.qualityId}`;
+    if (seen.has(key) || (item.root === root && item.qualityId === current)) return false;
+    seen.add(key);
+    return QUALITIES.some((entry) => entry.id === item.qualityId);
+  });
+}

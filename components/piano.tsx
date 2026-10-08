@@ -56,9 +56,9 @@ export function Piano({
         return (
           <div
             key={midi}
-            className="absolute top-0 flex h-6 w-3 items-end justify-center rounded-b-sm pb-0.5 text-[9px] font-medium leading-none"
+            className="absolute top-0 flex h-6 w-4 items-end justify-center rounded-b-sm pb-0.5 text-[9px] font-medium leading-none"
             style={{
-              left: `calc(${after} * 100% / ${whites.length} - 0.375rem)`,
+              left: `calc(${after} * 100% / ${whites.length} - 0.5rem)`,
               background: on ? accent : "#1b1916",
               color: on ? "#fffcf7" : "transparent",
             }}

@@ -12,7 +12,7 @@ import {
 import {
   SortableContext,
   arrayMove,
-  horizontalListSortingStrategy,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
 } from "@dnd-kit/sortable";
@@ -32,6 +32,7 @@ import {
   QUALITIES,
   ROOTS,
   chordSymbol,
+  suggestNext,
   keyboardBounds,
   noteToMidi,
   pretty,
@@ -44,6 +45,9 @@ import {
 
 const GROUND = new Set<string>(GROUND_IDS);
 const DASH_GAP_MS = 820;
+const DASH_STORAGE_KEY = "chords.dash";
+const ROOT_IDS = new Set<string>(ROOTS.map((item) => item.id));
+const QUALITY_IDS = new Set<string>(QUALITIES.map((item) => item.id));
 
 type DashChord = {
   id: string;
@@ -54,6 +58,44 @@ type DashChord = {
 };
 
 let dashCount = 0;
+
+function readStoredDash(): DashChord[] {
+  try {
+    const raw = localStorage.getItem(DASH_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const chord = item as Partial<DashChord>;
+      const inversion = Number(chord.inversion);
+      if (typeof chord.id !== "string" || !chord.id) return [];
+      if (typeof chord.root !== "string" || !ROOT_IDS.has(chord.root)) return [];
+      if (typeof chord.qualityId !== "string" || !QUALITY_IDS.has(chord.qualityId)) return [];
+      if (chord.octave !== 3 && chord.octave !== 4 && chord.octave !== 5) return [];
+      if (!Number.isInteger(inversion) || inversion < 0) return [];
+      return [
+        {
+          id: chord.id,
+          root: chord.root,
+          qualityId: chord.qualityId,
+          octave: chord.octave,
+          inversion,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function rememberDashCount(items: DashChord[]) {
+  for (const item of items) {
+    const match = /^dash-(\d+)$/.exec(item.id);
+    if (!match) continue;
+    dashCount = Math.max(dashCount, Number(match[1]));
+  }
+}
 
 function groundPitch(root: RootId, octave: number) {
   const note = `${spell(root, 1, 0).pc}${octave}`;
@@ -77,7 +119,9 @@ export function ChordApp() {
   const [hearingRoot, setHearingRoot] = useState(false);
   const [lit, setLit] = useState<{ midi: number; label: string }[]>([]);
   const [dash, setDash] = useState<DashChord[]>([]);
+  const [dashHydrated, setDashHydrated] = useState(false);
   const [activeDashId, setActiveDashId] = useState<string | null>(null);
+  const [pianoOpen, setPianoOpen] = useState(false);
   const timers = useRef<number[]>([]);
   const dashTimers = useRef<number[]>([]);
   const colorsScroller = useRef<HTMLDivElement>(null);
@@ -94,6 +138,19 @@ export function ChordApp() {
   const soundedInversion = quality ? Math.min(inversion, quality.steps.length - 1) : 0;
   const bounds = keyboardBounds(voicing?.midis ?? (hearingRoot ? [pitch.midi] : []));
   const loadingLabel = INSTRUMENTS.find((item) => item.id === (activeInstrument ?? instrument))?.label;
+  const suggestions = quality || hearingRoot ? suggestNext(root, quality?.id ?? "major") : [];
+
+  useEffect(() => {
+    const stored = readStoredDash();
+    rememberDashCount(stored);
+    setDash(stored);
+    setDashHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!dashHydrated) return;
+    localStorage.setItem(DASH_STORAGE_KEY, JSON.stringify(dash));
+  }, [dash, dashHydrated]);
 
   useEffect(() => {
     const timersRef = dashTimers;
@@ -137,7 +194,7 @@ export function ChordApp() {
     dashId: string | null = null,
   ) {
     if (dashId === null) stopDash();
-    setActiveDashId(dashId);
+    if (dashId) setActiveDashId(dashId);
     const next = voiceChord(nextRoot, nextQuality, nextOctave, nextInversion);
     setInversion(nextInversion);
     setQualityId(nextQuality.id);
@@ -150,7 +207,6 @@ export function ChordApp() {
 
   function playRoot(nextRoot: RootId, nextOctave = octave, nextInstrument = instrument) {
     stopDash();
-    setActiveDashId(null);
     const next = groundPitch(nextRoot, nextOctave);
     setRoot(nextRoot);
     setQualityId(null);
@@ -165,16 +221,20 @@ export function ChordApp() {
     if (!quality) return;
     dashCount += 1;
     const octaveValue = octave === 3 || octave === 5 ? octave : 4;
-    setDash((items) => [
-      ...items,
-      {
-        id: `dash-${dashCount}`,
-        root,
-        qualityId: quality.id,
-        octave: octaveValue,
-        inversion: soundedInversion,
-      },
-    ]);
+    const next: DashChord = {
+      id: `dash-${dashCount}`,
+      root,
+      qualityId: quality.id,
+      octave: octaveValue,
+      inversion: soundedInversion,
+    };
+    setDash((items) => [...items, next]);
+  }
+
+  function playSuggestion(nextRoot: RootId, nextQualityId: string) {
+    const nextQuality = QUALITIES.find((entry) => entry.id === nextQualityId);
+    if (!nextQuality) return;
+    sound(nextQuality, nextRoot, octave, 0);
   }
 
   function playSaved(item: DashChord, keepSequence = false) {
@@ -309,6 +369,8 @@ export function ChordApp() {
       </div>
 
       <footer className="shrink-0 border-t border-line bg-paper pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+        {pianoOpen && (
+          <>
         <div className="flex items-center gap-2.5 px-2.5 py-1.5">
           <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
             <p className="shrink-0 font-serif text-xl leading-none" aria-live="polite">
@@ -360,7 +422,7 @@ export function ChordApp() {
             Again
           </button>
         </div>
-        <div className="px-2.5">
+        <div className="mx-auto w-full max-w-xl px-2.5">
           <Piano low={bounds.low} high={bounds.high} active={lit} accent={accent} />
         </div>
         <div className="flex flex-nowrap items-center gap-1 px-2 pt-1.5 pb-1.5">
@@ -399,32 +461,32 @@ export function ChordApp() {
             }}
           />
         </div>
-        <div className="flex items-center gap-1.5 border-t border-line px-2 py-1.5" aria-label="Chord dash">
-          <button
-            type="button"
-            onClick={addToDash}
-            disabled={!quality}
-            aria-label={quality ? `Add ${chordSymbol(root, quality)} to the dash` : "Add the current chord to the dash"}
-            className="h-8 shrink-0 rounded-full px-2.5 text-[12px] font-semibold disabled:opacity-30"
-            style={{ boxShadow: "inset 0 0 0 1px #d8d1c4" }}
-          >
-            Add
-          </button>
+          </>
+        )}
+        <button
+          type="button"
+          aria-expanded={pianoOpen}
+          onClick={() => setPianoOpen((open) => !open)}
+          className="flex h-8 w-full items-center justify-center border-y border-line text-[12px] font-semibold text-muted"
+        >
+          {pianoOpen ? "Hide piano" : "Show piano"}
+        </button>
+        <div className="flex items-start gap-1.5 border-b border-line px-2 py-1.5" aria-label="Chord dash">
           <DndContext sensors={dashSensors} collisionDetection={closestCenter} onDragEnd={reorderDash}>
-            <SortableContext items={dash.map((item) => item.id)} strategy={horizontalListSortingStrategy}>
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-                {dash.length === 0 ? (
+            <SortableContext items={dash.map((item) => item.id)} strategy={rectSortingStrategy}>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                {dash.length === 0 && !quality && (
                   <p className="truncate px-1 text-[12px] text-muted">No chords yet</p>
-                ) : (
-                  dash.map((item) => (
-                    <DashChordButton
-                      key={item.id}
-                      item={item}
-                      active={item.id === activeDashId}
-                      onPlay={() => playSaved(item)}
-                    />
-                  ))
                 )}
+                {dash.map((item) => (
+                  <DashChordButton
+                    key={item.id}
+                    item={item}
+                    active={item.id === activeDashId}
+                    onPlay={() => playSaved(item)}
+                  />
+                ))}
+                {quality && <AddChordChip symbol={chordSymbol(root, quality)} onAdd={addToDash} />}
               </div>
             </SortableContext>
           </DndContext>
@@ -448,8 +510,51 @@ export function ChordApp() {
             Play
           </button>
         </div>
+        <div className="flex items-center gap-1.5 px-2 py-1.5" aria-label="Suggested chords">
+          <span className="shrink-0 text-[10px] font-semibold tracking-[0.12em] text-muted uppercase">Suggested</span>
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+            {suggestions.length === 0 ? (
+              <p className="truncate text-[12px] text-muted">Play a chord to see what often follows.</p>
+            ) : (
+              suggestions.map((item) => {
+                const itemQuality = QUALITIES.find((entry) => entry.id === item.qualityId);
+                if (!itemQuality) return null;
+                const symbol = chordSymbol(item.root, itemQuality);
+                return (
+                  <button
+                    key={`${item.root}-${item.qualityId}`}
+                    type="button"
+                    aria-label={`Play ${symbol}, suggested`}
+                    onClick={() => playSuggestion(item.root, item.qualityId)}
+                    className="h-8 shrink-0 rounded-full px-2.5 font-serif text-[15px] leading-none"
+                    style={{ boxShadow: "inset 0 0 0 1px #d8d1c4" }}
+                  >
+                    {symbol}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
       </footer>
     </div>
+  );
+}
+
+function AddChordChip({ symbol, onAdd }: { symbol: string; onAdd: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onAdd}
+      aria-label={`Add ${symbol} to the dash`}
+      className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-dotted px-2.5 font-serif text-[15px] leading-none"
+      style={{ background: "#e7c56a", borderColor: "#a67914" }}
+    >
+      {symbol}
+      <span aria-hidden="true" className="font-sans text-[16px] leading-none font-semibold">
+        +
+      </span>
+    </button>
   );
 }
 
