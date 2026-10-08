@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Piano } from "@/components/piano";
 import {
   INSTRUMENTS,
@@ -26,6 +26,17 @@ import {
 } from "@/lib/theory";
 
 const GROUND = new Set<string>(GROUND_IDS);
+const DASH_GAP_MS = 820;
+
+type DashChord = {
+  id: string;
+  root: RootId;
+  qualityId: string;
+  octave: 3 | 4 | 5;
+  inversion: number;
+};
+
+let dashCount = 0;
 
 function groundPitch(root: RootId, octave: number) {
   const note = `${spell(root, 1, 0).pc}${octave}`;
@@ -48,7 +59,10 @@ export function ChordApp() {
   const [qualityId, setQualityId] = useState<string | null>(null);
   const [hearingRoot, setHearingRoot] = useState(false);
   const [lit, setLit] = useState<{ midi: number; label: string }[]>([]);
+  const [dash, setDash] = useState<DashChord[]>([]);
+  const [activeDashId, setActiveDashId] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
+  const dashTimers = useRef<number[]>([]);
   const colorsScroller = useRef<HTMLDivElement>(null);
 
   const quality = QUALITIES.find((item) => item.id === qualityId) ?? null;
@@ -59,6 +73,18 @@ export function ChordApp() {
   const soundedInversion = quality ? Math.min(inversion, quality.steps.length - 1) : 0;
   const bounds = keyboardBounds(voicing?.midis ?? (hearingRoot ? [pitch.midi] : []));
   const loadingLabel = INSTRUMENTS.find((item) => item.id === (activeInstrument ?? instrument))?.label;
+
+  useEffect(() => {
+    const timersRef = dashTimers;
+    return () => {
+      timersRef.current.forEach((id) => window.clearTimeout(id));
+    };
+  }, []);
+
+  function stopDash() {
+    dashTimers.current.forEach((id) => window.clearTimeout(id));
+    dashTimers.current = [];
+  }
 
   function lightNotes(notes: string[], midis: number[], nextMode: PlayMode) {
     timers.current.forEach((id) => window.clearTimeout(id));
@@ -87,17 +113,23 @@ export function ChordApp() {
     nextInversion = inversion,
     nextMode = mode,
     nextInstrument = instrument,
+    dashId: string | null = null,
   ) {
+    if (dashId === null) stopDash();
+    setActiveDashId(dashId);
     const next = voiceChord(nextRoot, nextQuality, nextOctave, nextInversion);
     setInversion(nextInversion);
     setQualityId(nextQuality.id);
     setRoot(nextRoot);
+    if (nextOctave === 3 || nextOctave === 4 || nextOctave === 5) setOctave(nextOctave);
     setHearingRoot(false);
     lightNotes(next.notes, next.midis, nextMode);
     void play(next.notes, nextMode, nextInstrument);
   }
 
   function playRoot(nextRoot: RootId, nextOctave = octave, nextInstrument = instrument) {
+    stopDash();
+    setActiveDashId(null);
     const next = groundPitch(nextRoot, nextOctave);
     setRoot(nextRoot);
     setQualityId(null);
@@ -106,6 +138,44 @@ export function ChordApp() {
     lightNotes([next.note], [next.midi], "chord");
     void play([next.note], "chord", nextInstrument);
     colorsScroller.current?.scrollTo({ top: 0 });
+  }
+
+  function addToDash() {
+    if (!quality) return;
+    dashCount += 1;
+    const octaveValue = octave === 3 || octave === 5 ? octave : 4;
+    setDash((items) => [
+      ...items,
+      {
+        id: `dash-${dashCount}`,
+        root,
+        qualityId: quality.id,
+        octave: octaveValue,
+        inversion: soundedInversion,
+      },
+    ]);
+  }
+
+  function playSaved(item: DashChord, keepSequence = false) {
+    const nextQuality = QUALITIES.find((entry) => entry.id === item.qualityId);
+    if (!nextQuality) return;
+    if (!keepSequence) stopDash();
+    sound(nextQuality, item.root, item.octave, item.inversion, mode, instrument, item.id);
+  }
+
+  function playDash() {
+    stopDash();
+    dash.forEach((item, index) => {
+      const timer = window.setTimeout(() => playSaved(item, true), index * DASH_GAP_MS);
+      dashTimers.current.push(timer);
+    });
+  }
+
+  function removeActive() {
+    if (!activeDashId) return;
+    stopDash();
+    setDash((items) => items.filter((entry) => entry.id !== activeDashId));
+    setActiveDashId(null);
   }
 
   function colorRow(color: Quality, key: string) {
@@ -295,6 +365,66 @@ export function ChordApp() {
               else if (hearingRoot) playRoot(root, octave, next);
             }}
           />
+        </div>
+        <div className="flex items-center gap-1.5 border-t border-line px-2 py-1.5" aria-label="Chord dash">
+          <button
+            type="button"
+            onClick={addToDash}
+            disabled={!quality}
+            aria-label={quality ? `Add ${chordSymbol(root, quality)} to the dash` : "Add the current chord to the dash"}
+            className="h-8 shrink-0 rounded-full px-2.5 text-[12px] font-semibold disabled:opacity-30"
+            style={{ boxShadow: "inset 0 0 0 1px #d8d1c4" }}
+          >
+            Add
+          </button>
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+            {dash.length === 0 ? (
+              <p className="truncate px-1 text-[12px] text-muted">No chords yet</p>
+            ) : (
+              dash.map((item) => {
+                const itemQuality = QUALITIES.find((entry) => entry.id === item.qualityId);
+                if (!itemQuality) return null;
+                const symbol = chordSymbol(item.root, itemQuality);
+                const active = item.id === activeDashId;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={`Play ${symbol}`}
+                    onClick={() => playSaved(item)}
+                    className="h-8 shrink-0 rounded-full px-2.5 font-serif text-[15px] leading-none"
+                    style={{
+                      background: active ? "#1b1916" : "#fffcf7",
+                      color: active ? "#f4f1ea" : "#1b1916",
+                      boxShadow: active ? "none" : "inset 0 0 0 1px #d8d1c4",
+                    }}
+                  >
+                    {symbol}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={removeActive}
+            disabled={!activeDashId}
+            aria-label="Remove the selected chord"
+            className="h-8 shrink-0 rounded-full px-2.5 text-[12px] font-semibold disabled:opacity-30"
+            style={{ boxShadow: "inset 0 0 0 1px #d8d1c4" }}
+          >
+            Remove
+          </button>
+          <button
+            type="button"
+            onClick={playDash}
+            disabled={dash.length === 0}
+            aria-label="Play the saved chords in order"
+            className="h-8 shrink-0 rounded-full bg-ink px-2.5 text-[12px] font-semibold text-paper disabled:opacity-30"
+          >
+            Play
+          </button>
         </div>
       </footer>
     </div>
