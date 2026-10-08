@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Piano } from "@/components/piano";
 import {
   INSTRUMENTS,
@@ -25,8 +25,6 @@ import {
   type RootId,
 } from "@/lib/theory";
 
-const COPIES = 3;
-const CYCLE_REPEATS = 8;
 const GROUND = new Set<string>(GROUND_IDS);
 
 function groundPitch(root: RootId, octave: number) {
@@ -51,9 +49,7 @@ export function ChordApp() {
   const [hearingRoot, setHearingRoot] = useState(false);
   const [lit, setLit] = useState<{ midi: number; label: string }[]>([]);
   const timers = useRef<number[]>([]);
-  const scroller = useRef<HTMLDivElement>(null);
   const colorsScroller = useRef<HTMLDivElement>(null);
-  const jumping = useRef(false);
 
   const quality = QUALITIES.find((item) => item.id === qualityId) ?? null;
   const familyMeta = FAMILIES.find((item) => item.id === quality?.family);
@@ -63,28 +59,6 @@ export function ChordApp() {
   const soundedInversion = quality ? Math.min(inversion, quality.steps.length - 1) : 0;
   const bounds = keyboardBounds(voicing?.midis ?? (hearingRoot ? [pitch.midi] : []));
   const loadingLabel = INSTRUMENTS.find((item) => item.id === (activeInstrument ?? instrument))?.label;
-
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight / COPIES;
-  }, []);
-
-  function onGroundScroll() {
-    const el = scroller.current;
-    if (!el || jumping.current) return;
-    const setHeight = el.scrollHeight / COPIES;
-    if (setHeight === 0) return;
-    if (el.scrollTop < setHeight * 0.5) {
-      jumping.current = true;
-      el.scrollTop += setHeight;
-      jumping.current = false;
-    } else if (el.scrollTop > setHeight * 1.5) {
-      jumping.current = true;
-      el.scrollTop -= setHeight;
-      jumping.current = false;
-    }
-  }
 
   function lightNotes(notes: string[], midis: number[], nextMode: PlayMode) {
     timers.current.forEach((id) => window.clearTimeout(id));
@@ -145,18 +119,20 @@ export function ChordApp() {
         aria-pressed={selected}
         aria-label={`Play ${symbol}, ${color.label}`}
         onClick={() => sound(color, root, octave, 0)}
-        className="flex h-8 w-full items-center gap-2 border-b border-line px-2 text-left"
+        className="flex h-10 w-full items-center gap-2.5 border-b border-line px-2.5 text-left"
         style={{
           background: selected ? "#1b1916" : "transparent",
           color: selected ? "#f4f1ea" : "#1b1916",
         }}
       >
-        <span className="w-[4.5rem] shrink-0 font-serif text-[15px] leading-none">{symbol}</span>
-        <span className={`min-w-0 flex-1 truncate text-[11px] ${selected ? "text-[#f4f1ea]/70" : "text-muted"}`}>
-          {color.label}
+        <span className="flex shrink-0 items-baseline gap-1.5">
+          <span className="font-serif text-[17px] leading-none">{symbol}</span>
+          <span className={`hidden text-[11px] leading-none sm:inline ${selected ? "text-[#f4f1ea]/65" : "text-muted"}`}>
+            {notes.map((pc) => pretty(pc)).join(" ")}
+          </span>
         </span>
-        <span className={`hidden shrink-0 text-[10px] tracking-wide sm:inline ${selected ? "text-[#f4f1ea]/80" : "text-ink/70"}`}>
-          {notes.map((pc) => pretty(pc)).join(" ")}
+        <span className={`min-w-0 flex-1 truncate text-[13px] ${selected ? "text-[#f4f1ea]/70" : "text-muted"}`}>
+          {color.label}
         </span>
       </button>
     );
@@ -168,56 +144,47 @@ export function ChordApp() {
 
   return (
     <div className="flex h-dvh flex-col bg-paper text-ink">
-      <header className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-line px-2.5">
-        <h1 className="font-serif text-base leading-none">Chords</h1>
-        <p className="truncate text-[11px] text-muted">
+      <header className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line px-3">
+        <h1 className="font-serif text-lg leading-none">Chords</h1>
+        <p className="truncate text-[13px] text-muted">
           {status === "loading" ? `Loading ${loadingLabel?.toLowerCase()}…` : status === "error" ? error : null}
         </p>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[8.75rem_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-[9.5rem_1fr]">
         <section className="flex min-h-0 flex-col overflow-hidden border-r border-line bg-rail" aria-label="Roots">
-          <div ref={scroller} onScroll={onGroundScroll} className="pane min-h-0 flex-1 overflow-y-auto">
-            {Array.from({ length: COPIES }, (_, copy) => (
-              <div key={copy} aria-hidden={copy !== 1}>
-                {Array.from({ length: CYCLE_REPEATS }, (_, repeat) =>
-                  ROOTS.map((item) => {
-                    const selected = root === item.id && hearingRoot;
-                    return (
-                      <button
-                        key={`${copy}-${repeat}-${item.id}`}
-                        type="button"
-                        tabIndex={copy === 1 && repeat === 0 ? 0 : -1}
-                        aria-pressed={selected}
-                        aria-label={`Play ${item.label}`}
-                        onClick={() => playRoot(item.id)}
-                        className="flex h-7 w-full items-center px-2.5 text-left font-serif text-[15px] leading-none"
-                        style={{
-                          background: selected ? "#1b1916" : "transparent",
-                          color: selected ? "#f4f1ea" : "#1b1916",
-                        }}
-                      >
-                        {item.label}
-                      </button>
-                    );
-                  }),
-                )}
-              </div>
-            ))}
-          </div>
+          {ROOTS.map((item) => {
+            const selected = root === item.id && hearingRoot;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={selected}
+                aria-label={`Play ${item.label}`}
+                onClick={() => playRoot(item.id)}
+                className="flex min-h-0 w-full max-h-10 flex-1 items-center px-3 text-left font-serif text-[17px] leading-none"
+                style={{
+                  background: selected ? "#1b1916" : "transparent",
+                  color: selected ? "#f4f1ea" : "#1b1916",
+                }}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </section>
 
         <section className="flex min-h-0 flex-col overflow-hidden" aria-label="Chord colors">
-          <h2 className="flex h-6 shrink-0 items-center justify-between border-b border-line px-2 text-[10px] font-semibold tracking-[0.16em] text-muted uppercase">
+          <h2 className="flex h-8 shrink-0 items-center justify-between border-b border-line px-2.5 text-[11px] font-semibold tracking-[0.16em] text-muted uppercase">
             <span>Colors</span>
-            <span className="font-serif text-sm tracking-normal text-ink normal-case">{ROOTS.find((item) => item.id === root)?.label}</span>
+            <span className="font-serif text-base tracking-normal text-ink normal-case">{ROOTS.find((item) => item.id === root)?.label}</span>
           </h2>
           <div ref={colorsScroller} className="pane min-h-0 flex-1 overflow-y-auto">
             <div id="colors-common">
-              <div className="sticky top-0 z-10 flex h-6 items-center gap-1.5 border-b border-line bg-paper/95 px-2 backdrop-blur-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-ink" />
-                <span className="text-[10px] font-semibold tracking-[0.14em] text-ink uppercase">Common</span>
-                <span className="truncate text-[10px] text-muted">The chords you reach for first.</span>
+              <div className="sticky top-0 z-10 flex h-7 items-center gap-2 border-b border-line bg-paper/95 px-2.5 backdrop-blur-sm">
+                <span className="h-2 w-2 rounded-full bg-ink" />
+                <span className="text-[11px] font-semibold tracking-[0.14em] text-ink uppercase">Common</span>
+                <span className="truncate text-[12px] text-muted">Reach for these first.</span>
               </div>
               {commonChords.map((color) => colorRow(color, `common-${color.id}`))}
             </div>
@@ -225,12 +192,12 @@ export function ChordApp() {
               const colors = QUALITIES.filter((item) => item.family === family.id && !GROUND.has(item.id));
               return (
                 <div key={family.id} id={`colors-${family.id}`}>
-                  <div className="sticky top-0 z-10 flex h-6 items-center gap-1.5 border-b border-line bg-paper/95 px-2 backdrop-blur-sm">
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: family.accent }} />
-                    <span className="text-[10px] font-semibold tracking-[0.14em] uppercase" style={{ color: family.accent }}>
+                  <div className="sticky top-0 z-10 flex h-7 items-center gap-2 border-b border-line bg-paper/95 px-2.5 backdrop-blur-sm">
+                    <span className="h-2 w-2 rounded-full" style={{ background: family.accent }} />
+                    <span className="text-[11px] font-semibold tracking-[0.14em] uppercase" style={{ color: family.accent }}>
                       {family.name}
                     </span>
-                    <span className="truncate text-[10px] text-muted">{family.mood}</span>
+                    <span className="truncate text-[12px] text-muted">{family.mood}</span>
                   </div>
                   {colors.map((color) => colorRow(color, `${family.id}-${color.id}`))}
                 </div>
@@ -241,17 +208,19 @@ export function ChordApp() {
       </div>
 
       <footer className="shrink-0 border-t border-line bg-paper pb-[max(0.25rem,env(safe-area-inset-bottom))]">
-        <div className="flex items-center gap-2 px-2 py-1">
-          <p className="w-16 shrink-0 font-serif text-lg leading-none" aria-live="polite">
-            {quality ? chordSymbol(root, quality) : hearingRoot ? rootLabel(root) : "—"}
-          </p>
-          <p className="min-w-0 flex-1 truncate text-[11px] tracking-wide">
-            {voicing
-              ? voicing.notes.map((note) => pretty(note)).join("  ")
-              : hearingRoot
-                ? pretty(pitch.note)
-                : "Tap a chord"}
-          </p>
+        <div className="flex items-center gap-2.5 px-2.5 py-1.5">
+          <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            <p className="shrink-0 font-serif text-xl leading-none" aria-live="polite">
+              {quality ? chordSymbol(root, quality) : hearingRoot ? rootLabel(root) : "—"}
+            </p>
+            <p className="min-w-0 truncate text-[11px] leading-none text-muted">
+              {voicing
+                ? voicing.notes.map((note) => pretty(note)).join(" ")
+                : hearingRoot
+                  ? pretty(pitch.note)
+                  : "Tap a chord"}
+            </p>
+          </div>
           {quality && voicing && (
             <div className="flex items-center gap-0.5" role="group" aria-label="Bass note">
               {voicing.pitchClasses.map((pc, index) => {
@@ -265,7 +234,7 @@ export function ChordApp() {
                       setInversion(index);
                       sound(quality, root, octave, index);
                     }}
-                    className="h-6 min-w-6 rounded-full px-1 text-[11px] font-semibold"
+                    className="h-7 min-w-7 rounded-full px-1.5 text-[12px] font-semibold"
                     style={{
                       background: selected ? accent : "transparent",
                       color: selected ? "#fffcf7" : "#1b1916",
@@ -285,15 +254,15 @@ export function ChordApp() {
               else if (hearingRoot) playRoot(root);
             }}
             disabled={!quality && !hearingRoot}
-            className="h-6 shrink-0 rounded-full bg-ink px-2 text-[11px] font-semibold text-paper disabled:opacity-30"
+            className="h-7 shrink-0 rounded-full bg-ink px-2.5 text-[12px] font-semibold text-paper disabled:opacity-30"
           >
             Again
           </button>
         </div>
-        <div className="px-2">
+        <div className="px-2.5">
           <Piano low={bounds.low} high={bounds.high} active={lit} accent={accent} />
         </div>
-        <div className="flex gap-1 overflow-x-auto px-2 pt-1 pb-1">
+        <div className="flex flex-nowrap items-center gap-1 px-2 pt-1.5 pb-1.5">
           <Segmented
             label="How it plays"
             value={mode}
@@ -355,7 +324,7 @@ function Segmented<T extends string>({
             type="button"
             aria-pressed={selected}
             onClick={() => onChange(option.value)}
-            className="h-6 rounded-full px-2 text-[11px] font-semibold"
+            className="h-7 whitespace-nowrap rounded-full px-1.5 text-[12px] font-semibold"
             style={{
               background: selected ? "#1b1916" : "transparent",
               color: selected ? "#f4f1ea" : "#6f675c",
