@@ -16,49 +16,20 @@ export const ROOTS = [
 export type RootId = (typeof ROOTS)[number]["id"];
 
 export const FAMILIES = [
-  {
-    id: "bright",
-    name: "Bright",
-    mood: "Major. Stable and open.",
-    accent: "#e6b15a",
-  },
-  {
-    id: "dark",
-    name: "Dark",
-    mood: "Minor. Softer, a little sad.",
-    accent: "#7eb0d4",
-  },
-  {
-    id: "warm",
-    name: "Warm",
-    mood: "Dominant. Leans toward the next chord.",
-    accent: "#e8835a",
-  },
-  {
-    id: "open",
-    name: "Open",
-    mood: "Suspended. No third, so it floats.",
-    accent: "#8fb56a",
-  },
-  {
-    id: "tense",
-    name: "Tense",
-    mood: "Diminished. Tight and uneasy.",
-    accent: "#b39be0",
-  },
-  {
-    id: "lifted",
-    name: "Lifted",
-    mood: "Augmented. Bright, and unstable.",
-    accent: "#e58ab4",
-  },
-  {
-    id: "spicy",
-    name: "Spicy",
-    mood: "Altered dominants. Extra bite.",
-    accent: "#e15b4c",
-  },
+  { id: "bright", name: "Bright", mood: "Major. Stable and open.", accent: "#a67914" },
+  { id: "dark", name: "Dark", mood: "Minor. Softer, a little sad.", accent: "#2a6f97" },
+  { id: "warm", name: "Warm", mood: "Dominant. Leans forward.", accent: "#c0562a" },
+  { id: "open", name: "Open", mood: "Suspended. No third.", accent: "#2d7a52" },
+  { id: "tense", name: "Tense", mood: "Diminished. Tight.", accent: "#5c4cae" },
+  { id: "lifted", name: "Lifted", mood: "Augmented. Unstable.", accent: "#b13368" },
+  { id: "spicy", name: "Spicy", mood: "Altered. Extra bite.", accent: "#b42318" },
 ] as const;
+
+/** The left list is the root itself. Major still appears under Common so the triad can be heard. */
+export const GROUND_IDS = ["major"] as const;
+
+/** Shown first in the color list, in the order people usually learn them. */
+export const COMMON_IDS = ["major", "minor", "7", "maj7", "m7", "sus4", "sus2", "dim", "aug"] as const;
 
 export type FamilyId = (typeof FAMILIES)[number]["id"];
 

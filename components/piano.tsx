@@ -31,7 +31,7 @@ export function Piano({
   const activeByMidi = new Map(active.map((note) => [note.midi, note.label]));
 
   return (
-    <div className="relative h-16 w-full select-none" aria-hidden="true">
+    <div className="relative h-9 w-full select-none" aria-hidden="true">
       <div className="flex h-full gap-px">
         {whites.map((midi) => {
           const label = activeByMidi.get(midi);
@@ -39,10 +39,10 @@ export function Piano({
           return (
             <div
               key={midi}
-              className="relative flex h-full min-w-0 flex-1 items-end justify-center rounded-b-md border border-black/20 pb-1 text-[10px] font-medium leading-none"
+              className="relative flex h-full min-w-0 flex-1 items-end justify-center rounded-b-sm border border-ink/15 pb-0.5 text-[9px] font-medium leading-none"
               style={{
-                background: on ? accent : "#f3ecdf",
-                color: on ? "#1a140c" : "rgba(26, 20, 12, 0.45)",
+                background: on ? accent : "#fffcf7",
+                color: on ? "#fffcf7" : "rgba(27, 25, 22, 0.4)",
               }}
             >
               {on ? pretty(label) : midi % 12 === 0 ? "C" : ""}
@@ -56,12 +56,11 @@ export function Piano({
         return (
           <div
             key={midi}
-            className="absolute top-0 flex h-9 w-3.5 items-end justify-center rounded-b pb-0.5 text-[9px] font-medium leading-none"
+            className="absolute top-0 flex h-5 w-2.5 items-end justify-center rounded-b-sm text-[8px] font-medium leading-none"
             style={{
-              left: `calc(${after} * 100% / ${whites.length} - 0.4375rem)`,
-              background: on ? accent : "#241f1a",
-              color: on ? "#1a140c" : "transparent",
-              boxShadow: "0 2px 0 rgba(0,0,0,0.45)",
+              left: `calc(${after} * 100% / ${whites.length} - 0.3125rem)`,
+              background: on ? accent : "#1b1916",
+              color: on ? "#fffcf7" : "transparent",
             }}
           >
             {on ? pretty(label) : ""}

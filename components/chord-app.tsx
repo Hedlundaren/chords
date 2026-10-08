@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Piano } from "@/components/piano";
 import {
   INSTRUMENTS,
@@ -10,16 +10,29 @@ import {
 } from "@/lib/player";
 import {
   FAMILIES,
+  GROUND_IDS,
+  COMMON_IDS,
   QUALITIES,
   ROOTS,
   chordSymbol,
   keyboardBounds,
+  noteToMidi,
   pretty,
+  rootLabel,
+  spell,
   voiceChord,
-  type FamilyId,
   type Quality,
   type RootId,
 } from "@/lib/theory";
+
+const COPIES = 3;
+const CYCLE_REPEATS = 8;
+const GROUND = new Set<string>(GROUND_IDS);
+
+function groundPitch(root: RootId, octave: number) {
+  const note = `${spell(root, 1, 0).pc}${octave}`;
+  return { note, midi: noteToMidi(note) };
+}
 
 const OCTAVES = [
   { value: 3, label: "Low" },
@@ -34,18 +47,44 @@ export function ChordApp() {
   const [inversion, setInversion] = useState(0);
   const [mode, setMode] = useState<PlayMode>("chord");
   const [instrument, setInstrument] = useState<InstrumentId>("piano");
-  const [family, setFamily] = useState<FamilyId | "all">("all");
   const [qualityId, setQualityId] = useState<string | null>(null);
+  const [hearingRoot, setHearingRoot] = useState(false);
   const [lit, setLit] = useState<{ midi: number; label: string }[]>([]);
   const timers = useRef<number[]>([]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const colorsScroller = useRef<HTMLDivElement>(null);
+  const jumping = useRef(false);
 
   const quality = QUALITIES.find((item) => item.id === qualityId) ?? null;
-  const familyMeta = FAMILIES.find((item) => item.id === (quality?.family ?? "bright")) ?? FAMILIES[0];
-  const accent = quality ? familyMeta.accent : "#e6b15a";
+  const familyMeta = FAMILIES.find((item) => item.id === quality?.family);
+  const accent = familyMeta?.accent ?? FAMILIES[0].accent;
   const voicing = quality ? voiceChord(root, quality, octave, inversion) : null;
+  const pitch = groundPitch(root, octave);
   const soundedInversion = quality ? Math.min(inversion, quality.steps.length - 1) : 0;
-  const bounds = keyboardBounds(voicing?.midis ?? []);
-  const visibleFamilies = FAMILIES.filter((item) => family === "all" || item.id === family);
+  const bounds = keyboardBounds(voicing?.midis ?? (hearingRoot ? [pitch.midi] : []));
+  const loadingLabel = INSTRUMENTS.find((item) => item.id === (activeInstrument ?? instrument))?.label;
+
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight / COPIES;
+  }, []);
+
+  function onGroundScroll() {
+    const el = scroller.current;
+    if (!el || jumping.current) return;
+    const setHeight = el.scrollHeight / COPIES;
+    if (setHeight === 0) return;
+    if (el.scrollTop < setHeight * 0.5) {
+      jumping.current = true;
+      el.scrollTop += setHeight;
+      jumping.current = false;
+    } else if (el.scrollTop > setHeight * 1.5) {
+      jumping.current = true;
+      el.scrollTop -= setHeight;
+      jumping.current = false;
+    }
+  }
 
   function lightNotes(notes: string[], midis: number[], nextMode: PlayMode) {
     timers.current.forEach((id) => window.clearTimeout(id));
@@ -76,157 +115,145 @@ export function ChordApp() {
     nextInstrument = instrument,
   ) {
     const next = voiceChord(nextRoot, nextQuality, nextOctave, nextInversion);
+    setInversion(nextInversion);
     setQualityId(nextQuality.id);
+    setRoot(nextRoot);
+    setHearingRoot(false);
     lightNotes(next.notes, next.midis, nextMode);
     void play(next.notes, nextMode, nextInstrument);
   }
 
-  const loadingLabel = INSTRUMENTS.find((item) => item.id === (activeInstrument ?? instrument))?.label;
+  function playRoot(nextRoot: RootId, nextOctave = octave, nextInstrument = instrument) {
+    const next = groundPitch(nextRoot, nextOctave);
+    setRoot(nextRoot);
+    setQualityId(null);
+    setInversion(0);
+    setHearingRoot(true);
+    lightNotes([next.note], [next.midi], "chord");
+    void play([next.note], "chord", nextInstrument);
+    colorsScroller.current?.scrollTo({ top: 0 });
+  }
+
+  function colorRow(color: Quality, key: string) {
+    const selected = qualityId === color.id;
+    const symbol = chordSymbol(root, color);
+    const notes = voiceChord(root, color, octave, 0).pitchClasses;
+    return (
+      <button
+        key={key}
+        type="button"
+        aria-pressed={selected}
+        aria-label={`Play ${symbol}, ${color.label}`}
+        onClick={() => sound(color, root, octave, 0)}
+        className="flex h-8 w-full items-center gap-2 border-b border-line px-2 text-left"
+        style={{
+          background: selected ? "#1b1916" : "transparent",
+          color: selected ? "#f4f1ea" : "#1b1916",
+        }}
+      >
+        <span className="w-[4.5rem] shrink-0 font-serif text-[15px] leading-none">{symbol}</span>
+        <span className={`min-w-0 flex-1 truncate text-[11px] ${selected ? "text-[#f4f1ea]/70" : "text-muted"}`}>
+          {color.label}
+        </span>
+        <span className={`hidden shrink-0 text-[10px] tracking-wide sm:inline ${selected ? "text-[#f4f1ea]/80" : "text-ink/70"}`}>
+          {notes.map((pc) => pretty(pc)).join(" ")}
+        </span>
+      </button>
+    );
+  }
+
+  const commonChords = COMMON_IDS.map((id) => QUALITIES.find((item) => item.id === id)).filter(
+    (item): item is Quality => item !== undefined,
+  );
 
   return (
-    <div className="min-h-dvh bg-paper text-ink">
-      <header className="sticky top-0 z-20 border-b border-line bg-paper/90 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-3">
-          <div>
-            <h1 className="font-serif text-3xl leading-none tracking-tight">Chords</h1>
-            <p className="mt-1 text-sm text-muted">Tap one and hear the color.</p>
+    <div className="flex h-dvh flex-col bg-paper text-ink">
+      <header className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-line px-2.5">
+        <h1 className="font-serif text-base leading-none">Chords</h1>
+        <p className="truncate text-[11px] text-muted">
+          {status === "loading" ? `Loading ${loadingLabel?.toLowerCase()}…` : status === "error" ? error : null}
+        </p>
+      </header>
+
+      <div className="grid min-h-0 flex-1 grid-cols-[8.75rem_1fr]">
+        <section className="flex min-h-0 flex-col overflow-hidden border-r border-line bg-rail" aria-label="Roots">
+          <div ref={scroller} onScroll={onGroundScroll} className="pane min-h-0 flex-1 overflow-y-auto">
+            {Array.from({ length: COPIES }, (_, copy) => (
+              <div key={copy} aria-hidden={copy !== 1}>
+                {Array.from({ length: CYCLE_REPEATS }, (_, repeat) =>
+                  ROOTS.map((item) => {
+                    const selected = root === item.id && hearingRoot;
+                    return (
+                      <button
+                        key={`${copy}-${repeat}-${item.id}`}
+                        type="button"
+                        tabIndex={copy === 1 && repeat === 0 ? 0 : -1}
+                        aria-pressed={selected}
+                        aria-label={`Play ${item.label}`}
+                        onClick={() => playRoot(item.id)}
+                        className="flex h-7 w-full items-center px-2.5 text-left font-serif text-[15px] leading-none"
+                        style={{
+                          background: selected ? "#1b1916" : "transparent",
+                          color: selected ? "#f4f1ea" : "#1b1916",
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  }),
+                )}
+              </div>
+            ))}
           </div>
-          <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-12" role="group" aria-label="Root note">
-            {ROOTS.map((item) => {
-              const selected = item.id === root;
+        </section>
+
+        <section className="flex min-h-0 flex-col overflow-hidden" aria-label="Chord colors">
+          <h2 className="flex h-6 shrink-0 items-center justify-between border-b border-line px-2 text-[10px] font-semibold tracking-[0.16em] text-muted uppercase">
+            <span>Colors</span>
+            <span className="font-serif text-sm tracking-normal text-ink normal-case">{ROOTS.find((item) => item.id === root)?.label}</span>
+          </h2>
+          <div ref={colorsScroller} className="pane min-h-0 flex-1 overflow-y-auto">
+            <div id="colors-common">
+              <div className="sticky top-0 z-10 flex h-6 items-center gap-1.5 border-b border-line bg-paper/95 px-2 backdrop-blur-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-ink" />
+                <span className="text-[10px] font-semibold tracking-[0.14em] text-ink uppercase">Common</span>
+                <span className="truncate text-[10px] text-muted">The chords you reach for first.</span>
+              </div>
+              {commonChords.map((color) => colorRow(color, `common-${color.id}`))}
+            </div>
+            {FAMILIES.map((family) => {
+              const colors = QUALITIES.filter((item) => item.family === family.id && !GROUND.has(item.id));
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => {
-                    setRoot(item.id);
-                    if (quality) sound(quality, item.id);
-                  }}
-                  className="touch-manipulation h-11 rounded-xl text-sm font-semibold transition-colors"
-                  style={{
-                    background: selected ? "#f3ecdf" : "transparent",
-                    color: selected ? "#1a140c" : "#f3ecdf",
-                    boxShadow: selected ? "none" : "inset 0 0 0 1px rgba(243,236,223,0.16)",
-                  }}
-                >
-                  {item.label}
-                </button>
+                <div key={family.id} id={`colors-${family.id}`}>
+                  <div className="sticky top-0 z-10 flex h-6 items-center gap-1.5 border-b border-line bg-paper/95 px-2 backdrop-blur-sm">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: family.accent }} />
+                    <span className="text-[10px] font-semibold tracking-[0.14em] uppercase" style={{ color: family.accent }}>
+                      {family.name}
+                    </span>
+                    <span className="truncate text-[10px] text-muted">{family.mood}</span>
+                  </div>
+                  {colors.map((color) => colorRow(color, `${family.id}-${color.id}`))}
+                </div>
               );
             })}
           </div>
-          <div className="scroll-row -mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="Chord colors">
-            <FilterChip
-              label="All colors"
-              selected={family === "all"}
-              accent="#f3ecdf"
-              onClick={() => setFamily("all")}
-            />
-            {FAMILIES.map((item) => (
-              <FilterChip
-                key={item.id}
-                label={item.name}
-                selected={family === item.id}
-                accent={item.accent}
-                onClick={() => setFamily(item.id)}
-              />
-            ))}
-          </div>
-        </div>
-      </header>
+        </section>
+      </div>
 
-      <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 pt-5 pb-88">
-        {visibleFamilies.map((item) => {
-          const chords = QUALITIES.filter((qualityItem) => qualityItem.family === item.id);
-          return (
-            <section key={item.id} aria-labelledby={`color-${item.id}`}>
-              <div className="mb-3">
-                <h2 id={`color-${item.id}`} className="flex items-center gap-2 text-lg font-semibold">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: item.accent }} />
-                  {item.name}
-                </h2>
-                <p className="mt-0.5 text-sm text-muted">{item.mood}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                {chords.map((qualityItem) => {
-                  const selected = qualityItem.id === qualityId;
-                  const symbol = chordSymbol(root, qualityItem);
-                  const preview = voiceChord(root, qualityItem, octave, 0);
-                  return (
-                    <button
-                      key={qualityItem.id}
-                      type="button"
-                      aria-pressed={selected}
-                      aria-label={`Play ${symbol}, ${qualityItem.label}`}
-                      onClick={() => sound(qualityItem)}
-                      className="touch-manipulation flex min-h-24 flex-col items-start rounded-2xl px-3 py-3 text-left transition-transform active:scale-[0.98]"
-                      style={{
-                        background: selected
-                          ? `color-mix(in srgb, ${item.accent} 34%, #1c1915)`
-                          : `color-mix(in srgb, ${item.accent} 12%, #1c1915)`,
-                        boxShadow: selected
-                          ? `inset 0 0 0 1.5px ${item.accent}`
-                          : `inset 3px 0 0 ${item.accent}, inset 0 0 0 1px rgba(243,236,223,0.06)`,
-                      }}
-                    >
-                      <span className="font-serif text-[1.65rem] leading-none tracking-tight">{symbol}</span>
-                      <span className="mt-1 text-xs text-muted">{qualityItem.label}</span>
-                      <span className="mt-auto pt-3 text-[11px] tracking-wide text-ink/80">
-                        {preview.pitchClasses.map((pc) => pretty(pc)).join("  ")}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })}
-      </main>
-
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-[#1a1714]/95 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-serif text-3xl leading-none" aria-live="polite">
-                {quality ? chordSymbol(root, quality) : "—"}
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                {status === "loading"
-                  ? `Loading ${loadingLabel?.toLowerCase()}…`
-                  : status === "error"
-                    ? error
-                    : quality
-                      ? `${quality.label} · ${familyMeta.name}`
-                      : "Pick a chord above"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => quality && sound(quality)}
-              disabled={!quality}
-              className="touch-manipulation shrink-0 rounded-full px-3 py-2 text-sm font-semibold disabled:opacity-40"
-              style={{ background: accent, color: "#1a140c" }}
-            >
-              Again
-            </button>
-          </div>
-
-          {voicing && (
-            <p className="text-sm tracking-wide">
-              {voicing.notes.map((note) => pretty(note)).join("   ")}
-            </p>
-          )}
-
-          <Piano
-            low={bounds.low}
-            high={bounds.high}
-            active={lit}
-            accent={accent}
-          />
-
+      <footer className="shrink-0 border-t border-line bg-paper pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-center gap-2 px-2 py-1">
+          <p className="w-16 shrink-0 font-serif text-lg leading-none" aria-live="polite">
+            {quality ? chordSymbol(root, quality) : hearingRoot ? rootLabel(root) : "—"}
+          </p>
+          <p className="min-w-0 flex-1 truncate text-[11px] tracking-wide">
+            {voicing
+              ? voicing.notes.map((note) => pretty(note)).join("  ")
+              : hearingRoot
+                ? pretty(pitch.note)
+                : "Tap a chord"}
+          </p>
           {quality && voicing && (
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Bass note">
-              <span className="mr-1 text-[11px] uppercase tracking-wider text-muted">Bass</span>
+            <div className="flex items-center gap-0.5" role="group" aria-label="Bass note">
               {voicing.pitchClasses.map((pc, index) => {
                 const selected = index === soundedInversion;
                 return (
@@ -238,11 +265,11 @@ export function ChordApp() {
                       setInversion(index);
                       sound(quality, root, octave, index);
                     }}
-                    className="touch-manipulation h-8 min-w-8 rounded-full px-2 text-sm font-semibold"
+                    className="h-6 min-w-6 rounded-full px-1 text-[11px] font-semibold"
                     style={{
                       background: selected ? accent : "transparent",
-                      color: selected ? "#1a140c" : "#f3ecdf",
-                      boxShadow: selected ? "none" : "inset 0 0 0 1px rgba(243,236,223,0.16)",
+                      color: selected ? "#fffcf7" : "#1b1916",
+                      boxShadow: selected ? "none" : "inset 0 0 0 1px #d8d1c4",
                     }}
                   >
                     {pretty(pc)}
@@ -251,76 +278,59 @@ export function ChordApp() {
               })}
             </div>
           )}
-
-          <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-2 gap-2">
-              <Segmented
-                fill
-                label="How it plays"
-                value={mode}
-                options={[
-                  { value: "chord", label: "Chord" },
-                  { value: "notes", label: "Notes" },
-                ]}
-                onChange={(next) => {
-                  setMode(next);
-                  if (quality) sound(quality, root, octave, inversion, next);
-                }}
-              />
-              <Segmented
-                fill
-                label="Octave"
-                value={String(octave)}
-                options={OCTAVES.map((item) => ({ value: String(item.value), label: item.label }))}
-                onChange={(next) => {
-                  const value = Number(next) as 3 | 4 | 5;
-                  setOctave(value);
-                  if (quality) sound(quality, root, value, inversion, mode);
-                }}
-              />
-            </div>
-            <Segmented
-              fill
-              label="Instrument"
-              value={instrument}
-              options={INSTRUMENTS.map((item) => ({ value: item.id, label: item.label }))}
-              onChange={(next) => {
-                setInstrument(next);
-                if (quality) sound(quality, root, octave, inversion, mode, next);
-              }}
-            />
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (quality) sound(quality);
+              else if (hearingRoot) playRoot(root);
+            }}
+            disabled={!quality && !hearingRoot}
+            className="h-6 shrink-0 rounded-full bg-ink px-2 text-[11px] font-semibold text-paper disabled:opacity-30"
+          >
+            Again
+          </button>
         </div>
-      </div>
+        <div className="px-2">
+          <Piano low={bounds.low} high={bounds.high} active={lit} accent={accent} />
+        </div>
+        <div className="flex gap-1 overflow-x-auto px-2 pt-1 pb-1">
+          <Segmented
+            label="How it plays"
+            value={mode}
+            options={[
+              { value: "chord", label: "Chord" },
+              { value: "notes", label: "Notes" },
+            ]}
+            onChange={(next) => {
+              setMode(next);
+              if (quality) sound(quality, root, octave, inversion, next);
+              else if (hearingRoot) playRoot(root);
+            }}
+          />
+          <Segmented
+            label="Octave"
+            value={String(octave)}
+            options={OCTAVES.map((item) => ({ value: String(item.value), label: item.label }))}
+            onChange={(next) => {
+              const value = Number(next) as 3 | 4 | 5;
+              setOctave(value);
+              if (quality) sound(quality, root, value);
+              else if (hearingRoot) playRoot(root, value);
+            }}
+          />
+          <Segmented
+            label="Instrument"
+            value={instrument}
+            options={INSTRUMENTS.map((item) => ({ value: item.id, label: item.label }))}
+            onChange={(next) => {
+              setInstrument(next);
+              if (quality) sound(quality, root, octave, inversion, mode, next);
+              else if (hearingRoot) playRoot(root, octave, next);
+            }}
+          />
+        </div>
+      </footer>
     </div>
-  );
-}
-
-function FilterChip({
-  label,
-  selected,
-  accent,
-  onClick,
-}: {
-  label: string;
-  selected: boolean;
-  accent: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      className="touch-manipulation shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
-      style={{
-        background: selected ? accent : "transparent",
-        color: selected ? "#1a140c" : accent,
-        boxShadow: `inset 0 0 0 1px ${accent}`,
-      }}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -329,16 +339,14 @@ function Segmented<T extends string>({
   value,
   options,
   onChange,
-  fill = false,
 }: {
   label: string;
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
-  fill?: boolean;
 }) {
   return (
-    <div role="group" aria-label={label} className={`flex rounded-full bg-white/5 p-0.5 ${fill ? "w-full" : ""}`}>
+    <div role="group" aria-label={label} className="flex shrink-0 rounded-full bg-rail p-0.5">
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -347,10 +355,10 @@ function Segmented<T extends string>({
             type="button"
             aria-pressed={selected}
             onClick={() => onChange(option.value)}
-            className={`touch-manipulation rounded-full px-2.5 py-1.5 text-xs font-semibold ${fill ? "flex-1" : ""}`}
+            className="h-6 rounded-full px-2 text-[11px] font-semibold"
             style={{
-              background: selected ? "#f3ecdf" : "transparent",
-              color: selected ? "#1a140c" : "#a89b8c",
+              background: selected ? "#1b1916" : "transparent",
+              color: selected ? "#f4f1ea" : "#6f675c",
             }}
           >
             {option.label}

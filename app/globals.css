@@ -1,16 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --paper: #12100e;
-  --ink: #f3ecdf;
-  --muted: #a89b8c;
-  --line: rgba(243, 236, 223, 0.12);
+  --paper: #f4f1ea;
+  --rail: #e7e2d8;
+  --ink: #1b1916;
+  --muted: #6f675c;
+  --line: #d8d1c4;
   --background: var(--paper);
   --foreground: var(--ink);
 }
 
 @theme inline {
   --color-paper: var(--paper);
+  --color-rail: var(--rail);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-line: var(--line);
@@ -27,16 +29,13 @@ body {
 }
 
 button:focus-visible {
-  outline: 2px solid #f3ecdf;
-  outline-offset: 2px;
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
 }
 
-.scroll-row {
-  scrollbar-width: none;
-}
-
-.scroll-row::-webkit-scrollbar {
-  display: none;
+.pane {
+  scrollbar-width: thin;
+  scrollbar-color: #c9c1b3 transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
